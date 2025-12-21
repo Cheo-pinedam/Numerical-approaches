@@ -1,0 +1,124 @@
+##Problem 2
+import numpy as np
+from scipy.sparse import spdiags
+import matplotlib.pyplot as plt
+with open("Fmat.npz", "r") as f:
+    Fmat = np.load("Fmat.npz")["Fmat"]
+with open("permvec.npz", "r") as f:
+    permvec = np.load("permvec.npz")["permvec"]
+
+def fourier_decryption(Fmat, permvec):
+    
+    N = 320
+    size_block = 20
+    
+    
+    grid_dim = 4
+    
+    
+    half = N // 2  
+    
+    
+    grid_size = grid_dim * size_block   
+    
+    
+    begin = half - grid_size // 2  
+    end = half + grid_size // 2    
+    
+    
+    unmod_region = Fmat[begin:end, begin:end].copy()
+    
+    
+    organized_region = np.zeros_like(unmod_region)
+    
+    
+    for index in range(len(permvec)):
+        
+        final_pos = permvec[index]
+        
+        
+        org_row = index // grid_dim
+        org_col = index % grid_dim
+        
+        
+        fin_row = final_pos // grid_dim
+        fin_col = final_pos % grid_dim
+        
+        
+        r_begin = org_row * size_block
+        r_end = (org_row + 1) * size_block
+        c_begin = org_col * size_block
+        c_end = (org_col + 1) * size_block
+        
+        source_block = unmod_region[r_begin:r_end, 
+                                       c_begin:c_end]
+        
+        
+        fin_r_start = fin_row * size_block
+        fin_r_end = (fin_row + 1) * size_block
+        fin_c_start = fin_col * size_block
+        fin_c_end = (fin_col + 1) * size_block
+        
+        organized_region[fin_r_start:fin_r_end, 
+                          fin_c_start:fin_c_end] = source_block
+    
+    
+    Fmat_decryption = Fmat.copy()
+    Fmat_decryption[begin:end, begin:end] = organized_region
+    
+    
+    A4 = np.abs(Fmat_decryption)
+    
+    
+    Fmat_edges = np.fft.ifftshift(Fmat_decryption)
+    
+    
+    img_complex = np.fft.ifft2(Fmat_edges)
+    
+    A5 = np.abs(img_complex)
+    
+    return A4, A5
+
+
+A4, A5 = fourier_decryption(Fmat, permvec)
+
+plt.figure(figsize=(5, 4))
+plt.imshow(A4, cmap="gray")
+plt.colorbar(label="|F(kx, ky)|")
+plt.title("A4: Magnitude of Decrypted Fourier Matrix")
+plt.axis("off")
+plt.tight_layout()
+plt.show()
+
+plt.figure(figsize=(5, 4))
+plt.imshow(A5, cmap="gray")
+plt.colorbar(label="Intensity")
+plt.title("A5: Decrypted Image (ifft of A4)")
+plt.axis("off")
+plt.tight_layout()
+plt.show()
+
+A4_scrambled = np.abs(Fmat)
+
+plt.figure(figsize=(10, 4))
+
+plt.subplot(1, 2, 1)
+plt.imshow(A4_scrambled, cmap="gray")
+plt.title("Original |Fmat| (Encrypted)")
+plt.axis("off")
+
+plt.subplot(1, 2, 2)
+plt.imshow(A4, cmap="gray")
+plt.title("A4: |Fmat_decryption| (Decrypted Center)")
+plt.axis("off")
+
+plt.tight_layout()
+plt.show()
+
+
+plt.figure(figsize=(5, 4))
+plt.imshow(A5, cmap="gray")
+plt.title("A5: Decrypted Image")
+plt.axis("off")
+plt.tight_layout()
+plt.show()

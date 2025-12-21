@@ -1,0 +1,135 @@
+##Homework 2
+##Carlos Pineda
+##October 23th, 2025
+
+import numpy as np
+import matplotlib.pyplot as plt
+from scipy.integrate import solve_ivp
+##Problem 1
+
+K = 1.0
+L = 4.0
+dx = 0.1
+
+
+N = int(round(2*L/dx)) + 1
+x = np.linspace(-L, L, N, dtype=float)
+
+tol = 1e-4  
+sqrtK = np.sqrt(K)
+
+def phi_rhs(xi, y, eps):
+    phi, dphi = y
+    d2phi = (K * xi * xi - eps) * phi
+    return [dphi, d2phi]
+
+
+def shoot_residual(eps):
+    
+    phi_minusL = 1.0
+    dphi_minusL =  sqrtK * L * phi_minusL
+    y0 = [phi_minusL, dphi_minusL]
+
+
+    sol = solve_ivp(
+        phi_rhs, (x[0], x[-1]), y0,
+        t_eval=x, args=(eps,), rtol=1e-9, atol=1e-9
+    )
+
+    phi_grid = sol.y[0]
+    return phi_grid[-1], phi_grid   
+
+def find_eigen_bisect(e_left, e_right, tol=1e-4, maxiter=60):
+    f_left, _  = shoot_residual(e_left)
+    f_right, _ = shoot_residual(e_right)
+
+    if f_left == 0.0:
+        return e_left
+    if f_right == 0.0:
+        return e_right
+    if f_left * f_right > 0.0:
+        raise RuntimeError(
+            f"No sign change in bracket [{e_left}, {e_right}] "
+            f"(f_left={f_left}, f_right={f_right})."
+        )
+
+    for _ in range(maxiter):
+        e_mid = 0.5 * (e_left + e_right)
+        f_mid, _ = shoot_residual(e_mid)
+
+        if abs(f_mid) < tol:
+            return e_mid
+
+        if f_left * f_mid < 0:
+            e_right = e_mid
+            f_right = f_mid
+        else:
+            e_left = e_mid
+            f_left = f_mid
+
+        if abs(e_right - e_left) < tol:
+            return 0.5 * (e_left + e_right)
+
+    return 0.5 * (e_left + e_right)
+
+approx_centers = [1.0, 3.0, 5.0, 7.0, 9.0]
+brackets = [(c - 0.5, c + 0.5) for c in approx_centers]
+
+eigenvalues = []
+eigenfuncs = []
+
+for (el, er) in brackets:
+    eps_n = find_eigen_bisect(el, er, tol=tol)
+    _, phi_grid = shoot_residual(eps_n)
+
+    
+    norm = np.sqrt(np.trapezoid(phi_grid**2, x))
+    phi_norm = phi_grid / norm
+
+    eigenvalues.append(eps_n)
+    eigenfuncs.append(phi_norm)
+
+eigenvalues = np.array(eigenvalues).reshape(5, 1) 
+
+A1 = np.abs(eigenfuncs[0]).reshape(-1, 1)
+A2 = np.abs(eigenfuncs[1]).reshape(-1, 1)
+A3 = np.abs(eigenfuncs[2]).reshape(-1, 1)
+A4 = np.abs(eigenfuncs[3]).reshape(-1, 1)
+A5 = np.abs(eigenfuncs[4]).reshape(-1, 1)
+A6 = eigenvalues
+
+plt.figure()
+for n, phi in enumerate(eigenfuncs):
+    plt.plot(x, phi, label=fr"$n={n}$, $\epsilon_{n}\approx{eigenvalues[n,0]:.3f}$")
+
+plt.xlabel("$x$")
+plt.ylabel(r"$\phi_n(x)$")
+plt.title("First five normalized eigenfunctions (shooting method)")
+plt.legend()
+plt.grid(True)
+plt.tight_layout()
+plt.show()
+
+# 2) Plot probability densities |phi|^2
+plt.figure()
+for n, phi in enumerate(eigenfuncs):
+    plt.plot(x, phi**2, label=fr"$|\phi_{n}(x)|^2$")
+
+plt.xlabel("$x$")
+plt.ylabel(r"$|\phi_n(x)|^2$")
+plt.title("Probability densities for first five states")
+plt.legend()
+plt.grid(True)
+plt.tight_layout()
+plt.show()
+
+# 3) Plot eigenvalues vs index n
+plt.figure()
+n_vals = np.arange(5)
+plt.plot(n_vals, eigenvalues[:,0], "o-")
+plt.xlabel("n")
+plt.ylabel(r"$\epsilon_n$")
+plt.title("Computed eigenvalues")
+plt.grid(True)
+plt.tight_layout()
+plt.show()

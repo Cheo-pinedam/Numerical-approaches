@@ -1,0 +1,367 @@
+import numpy as np
+import scipy.sparse as sp
+import scipy.sparse.linalg as spla
+from scipy.sparse.linalg import gmres, bicgstab
+import matplotlib.pyplot as plt
+import matplotlib.animation as animation
+from scipy.integrate import solve_ivp
+import time
+
+##Homework 4
+##Carlos Pineda
+##November 20, 2025
+
+
+##Problem 1
+
+n = 64
+L = 10.0
+nu = 0.001
+e = np.ones(n)
+
+
+h = 2.0 * L / n                          
+x = -L + h * np.arange(n)                
+y = -L + h * np.arange(n)
+X, Y = np.meshgrid(x, y)
+
+D1 = sp.spdiags([-0.5*e, 0*e, 0.5*e], [-1, 0, 1], n, n).tolil()
+D1[0, -1]  = -0.5                    
+D1[-1, 0]  =  0.5
+D1 = (D1 / h).tocsr()
+
+
+D2 = sp.spdiags([1.0*e, -2.0*e, 1.0*e], [-1, 0, 1], n, n).tolil()
+D2[0, -1] = 1.0                    
+D2[-1, 0] = 1.0
+D2 = (D2 / h**2).tocsr()
+
+
+Dx  = D1.todense()
+Dy  = D1.todense()
+Dxx = D2.todense()
+Dyy = D2.todense()
+
+
+Ix = np.asmatrix(np.eye(n))
+Iy = np.asmatrix(np.eye(n))
+
+
+A = np.kron(Iy, Dxx) + np.kron(Dyy, Ix)
+B = np.kron(Dx, Iy)   
+C = np.kron(Ix, Dy)  
+
+
+A[0, 0] = 2.0 / h**2
+
+A = sp.csr_matrix(A)
+B = sp.csr_matrix(B)
+C = sp.csr_matrix(C)
+
+def solve_psi_direct(omega_flat):
+    return spla.spsolve(A, omega_flat)
+
+
+A_lu = spla.splu(A.tocsc())
+
+def solve_psi_LU(omega_flat):
+    return A_lu.solve(omega_flat)
+
+def rhs_direct(t, omega_flat):
+    
+    omega_flat = np.asarray(omega_flat).ravel()
+
+    
+    psi_flat = np.asarray(solve_psi_direct(omega_flat)).ravel()
+
+    
+    Bpsi   = np.asarray(B @ psi_flat).ravel()
+    Cpsi   = np.asarray(C @ psi_flat).ravel()
+    Bomega = np.asarray(B @ omega_flat).ravel()
+    Comega = np.asarray(C @ omega_flat).ravel()
+    Aomega = np.asarray(A @ omega_flat).ravel()
+
+    
+    domega_dt = -np.multiply(Bpsi, Comega) + np.multiply(Cpsi, Bomega) + nu*Aomega
+    return domega_dt
+
+
+def rhs_LU(t, omega_flat):
+    omega_flat = np.asarray(omega_flat).ravel()
+
+    
+    psi_flat = np.asarray(solve_psi_LU(omega_flat)).ravel()
+
+    Bpsi   = np.asarray(B @ psi_flat).ravel()
+    Cpsi   = np.asarray(C @ psi_flat).ravel()
+    Bomega = np.asarray(B @ omega_flat).ravel()
+    Comega = np.asarray(C @ omega_flat).ravel()
+    Aomega = np.asarray(A @ omega_flat).ravel()
+
+    domega_dt = -np.multiply(Bpsi, Comega) + np.multiply(Cpsi, Bomega) + nu*Aomega
+    return domega_dt
+
+omega0 = np.exp(-X**2 - Y**2 / 20.0)
+omega0_flat = omega0.reshape(n*n, order='F')
+
+
+t_eval = np.arange(0.0, 4.0 + 0.5, 0.5)   
+
+
+t0, tf = t_eval[0], t_eval[-1]
+
+start = time.process_time()
+sol_direct = solve_ivp(rhs_direct, (t0, tf), omega0_flat,
+                       t_eval=t_eval, method="RK45")
+time_direct = time.process_time() - start
+A1 = sol_direct.y.T 
+
+start = time.process_time()
+sol_LU = solve_ivp(rhs_LU, (t0, tf), omega0_flat,
+                   t_eval=t_eval, method="RK45")
+time_LU = time.process_time() - start
+A2 = sol_LU.y.T  
+
+
+
+NLOG = 3
+bicgstab_logs = []
+gmres_logs    = []
+
+def solve_psi_bicgstab(omega_flat):
+    omega_flat = np.asarray(omega_flat).ravel()
+
+    if len(bicgstab_logs) < NLOG:
+        residuals = []
+
+        def cb(xk):
+            r = omega_flat - A @ xk
+            residuals.append(np.linalg.norm(r))
+
+        psi, info = bicgstab(A, omega_flat, callback=cb)  
+        bicgstab_logs.append(residuals)
+    else:
+        psi, info = bicgstab(A, omega_flat)              
+    return psi
+
+
+def solve_psi_gmres(omega_flat):
+    omega_flat = np.asarray(omega_flat).ravel()
+
+    if len(gmres_logs) < NLOG:
+        residuals = []
+
+        def cb(rk):
+            residuals.append(rk)
+
+        psi, info = gmres(A, omega_flat,
+                          callback=cb, callback_type='pr_norm')  
+        gmres_logs.append(residuals)
+    else:
+        psi, info = gmres(A, omega_flat)                          
+    return psi
+
+
+
+def rhs_bi(t, omega_flat):
+    omega_flat = np.asarray(omega_flat).ravel()
+    psi_flat   = np.asarray(solve_psi_bicgstab(omega_flat)).ravel()
+
+    Bpsi   = np.asarray(B @ psi_flat).ravel()
+    Cpsi   = np.asarray(C @ psi_flat).ravel()
+    Bomega = np.asarray(B @ omega_flat).ravel()
+    Comega = np.asarray(C @ omega_flat).ravel()
+    Aomega = np.asarray(A @ omega_flat).ravel()
+
+    domega_dt = -np.multiply(Bpsi, Comega) + np.multiply(Cpsi, Bomega) + nu*Aomega
+    return domega_dt
+
+
+def rhs_gm(t, omega_flat):
+    omega_flat = np.asarray(omega_flat).ravel()
+    psi_flat   = np.asarray(solve_psi_gmres(omega_flat)).ravel()
+
+    Bpsi   = np.asarray(B @ psi_flat).ravel()
+    Cpsi   = np.asarray(C @ psi_flat).ravel()
+    Bomega = np.asarray(B @ omega_flat).ravel()
+    Comega = np.asarray(C @ omega_flat).ravel()
+    Aomega = np.asarray(A @ omega_flat).ravel()
+
+    domega_dt = -np.multiply(Bpsi, Comega) + np.multiply(Cpsi, Bomega) + nu*Aomega
+    return domega_dt
+
+
+
+start = time.process_time()
+sol_bi = solve_ivp(rhs_bi, (t0, tf), omega0_flat,
+                   t_eval=t_eval, method="RK45")
+time_bi = time.process_time() - start
+A3 = sol_bi.y.T   
+
+
+
+
+start = time.process_time()
+sol_gm = solve_ivp(rhs_gm, (t0, tf), omega0_flat,
+                   t_eval=t_eval, method="RK45")
+time_gm = time.process_time() - start
+A4 = sol_gm.y.T  
+
+
+
+kx = 2*np.pi * np.fft.fftfreq(n, d=h)   
+ky = 2*np.pi * np.fft.fftfreq(n, d=h)   
+
+KX, KY = np.meshgrid(kx, ky, indexing='ij')
+K2 = KX*KX + KY*KY
+
+def solve_psi_fft(omega_flat):
+    
+    w = np.asarray(omega_flat).reshape((n, n), order='F')
+    w_hat = np.fft.fft2(w)
+
+    
+    psi_hat = np.zeros_like(w_hat, dtype=complex)
+    mask = (K2 != 0)
+    psi_hat[mask] = -w_hat[mask] / K2[mask]
+    psi_hat[0, 0] = 0.0   
+
+    psi = np.fft.ifft2(psi_hat).real
+    return psi.reshape(n*n, order='F')
+
+def rhs_factory_fft():
+    def rhs(t, omega_flat):
+        omega_flat = np.asarray(omega_flat).ravel()
+        psi_flat   = np.asarray(solve_psi_fft(omega_flat)).ravel()
+
+        Bpsi   = np.asarray(B @ psi_flat).ravel()
+        Cpsi   = np.asarray(C @ psi_flat).ravel()
+        Bomega = np.asarray(B @ omega_flat).ravel()
+        Comega = np.asarray(C @ omega_flat).ravel()
+        Aomega = np.asarray(A @ omega_flat).ravel()
+
+        domega_dt = -np.multiply(Bpsi, Comega) + np.multiply(Cpsi, Bomega) + nu*Aomega
+        return domega_dt
+    return rhs
+
+rhs_fft = rhs_factory_fft()
+
+t_eval = np.arange(0.0, 4.0+0.5, 0.5)
+t0, tf = t_eval[0], t_eval[-1]
+
+omega0 = np.exp(-X**2 - Y**2/20.0)
+omega0_flat = omega0.reshape(n*n, order='F')
+
+start = time.process_time()
+sol_fft = solve_ivp(rhs_fft, (t0, tf), omega0_flat,
+                    t_eval=t_eval, method='RK45')
+time_fft = time.process_time() - start
+
+A5 = sol_fft.y.T 
+
+def ic_two_opposite(X, Y):
+    w1 = +1.0 * np.exp(-(((X + 2.0)**2 + Y**2) / 20))
+    w2 = -1.0 * np.exp(-(((X - 2.0)**2 + Y**2) / 20))
+    return w1 + w2
+
+def ic_two_same(X, Y):
+    
+    w1 = +1.0 * np.exp(-(((X + 3.0)**2 + Y**2) / 20))
+    w2 = +1.0 * np.exp(-(((X - 3.0)**2 + Y**2) / 20))
+    return w1 + w2
+
+def ic_two_pairs_colliding(X, Y):
+    
+    w1 = +1.0 * np.exp(-((X + 5.0)**2 + (Y + 3.0)**2) / 20)
+    w2 = -1.0 * np.exp(-((X + 5.0)**2 + (Y - 3.0)**2) / 20)
+    
+    w3 = -1.0 * np.exp(-((X - 5.0)**2 + (Y + 3.0)**2) / 20)
+    w4 = +1.0 * np.exp(-((X - 5.0)**2 + (Y - 3.0)**2) / 20)
+    return w1 + w2 + w3 + w4
+
+def ic_random_vortices(X, Y, n_vort=12, seed=0):
+   
+    rng = np.random.default_rng(seed)
+    omega0 = np.zeros_like(X)
+    for k in range(n_vort):
+        x0 = rng.uniform(-0.8*L, 0.8*L)
+        y0 = rng.uniform(-0.8*L, 0.8*L)
+        amp = rng.uniform(-1.0, 1.0)   
+        sigma = rng.uniform(0.7, 2.0)
+        omega0 += amp * np.exp(-((X - x0)**2 + (Y - y0)**2) / sigma**2)
+    return omega0
+
+
+
+def run_simulation(omega0, t_final=30.0, n_frames=200):
+    
+    t_eval = np.linspace(0.0, t_final, n_frames)
+
+    sol = solve_ivp(
+        rhs_fft,
+        (0.0, t_final),
+        omega0.ravel(),
+        t_eval=t_eval,
+        method='RK45',          
+        rtol=1e-6,
+        atol=1e-8
+    )
+
+    if not sol.success:
+        raise RuntimeError("Time integration failed: " + sol.message)
+
+    omega_t = sol.y.T.reshape(-1, n, n)    
+    return sol.t, omega_t
+
+
+
+def make_animation(times, omega_t, filename="vortices.gif",
+                   vmin=None, vmax=None):
+
+    fig, ax = plt.subplots(figsize=(5, 4))
+
+    if vmin is None:
+        vmin = np.min(omega_t[0])
+    if vmax is None:
+        vmax = np.max(omega_t[0])
+
+    im = ax.imshow(
+        omega_t[0],
+        origin="lower",
+        extent=(-L, L, -L, L),
+        vmin=vmin,
+        vmax=vmax,
+        cmap="coolwarm",
+        interpolation="bilinear"
+    )
+
+    def update(frame):
+        im.set_data(omega_t[frame])
+        return [im]
+
+    anim = animation.FuncAnimation(
+        fig, update,
+        frames=len(times),
+        interval=50,
+        blit=True
+    )
+
+    anim.save(filename, writer="pillow", fps=20)
+    plt.close(fig)
+    
+
+    print(f"Saved GIF to {filename}")
+
+
+    
+#omega0 = ic_two_opposite(X, Y)
+#omega0 = ic_two_same(X, Y)
+#omega0 = ic_two_pairs_colliding(X, Y)
+omega0 = ic_random_vortices(X, Y, n_vort=12, seed=3)
+
+    
+t_final = 30.0
+n_frames = 200
+
+times, omega_t = run_simulation(omega0, t_final=t_final, n_frames=n_frames)
+make_animation(times, omega_t, filename="as_cool_as_it_gets.gif")

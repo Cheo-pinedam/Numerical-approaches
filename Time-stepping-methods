@@ -1,0 +1,208 @@
+##Homework 1
+##Carlos Pineda
+##October 16th, 2025
+
+import numpy as np
+import matplotlib.pyplot as plt
+from scipy.integrate import solve_ivp
+
+
+##Problem 1a
+Err = []
+A1 = None
+
+y0 = np.pi/np.sqrt(2)
+dt_list = 2.0**(-np.arange(2,9))
+
+
+for dt in dt_list:
+    t = np.arange(0,5+dt,dt)
+    y_true = y0*np.exp(3.0*(np.cos(t)-1.0)) 
+    y = np.empty_like(y_true)
+    y[0] = np.pi/np.sqrt(2)
+    for j in range(len(t)-1):
+        y[j+1] = y[j] +dt* (-3.0*y[j]*np.sin(t[j]))
+    E = np.mean(np.abs(y_true - y))
+    Err.append(E)
+
+    
+    if np.isclose(dt, dt_list[-1]):
+        A1 = y.reshape(y.size, 1)   # column vector
+
+
+A2 = np.array(Err, dtype=float).reshape(-1)
+A3 = float(np.polyfit(np.log(dt_list), np.log(Err), 1)[0])
+
+##Problem 1b
+
+Err_heun = []
+A4 = None
+
+y0 = np.pi/np.sqrt(2)
+dt_list = 2.0**(-np.arange(2,9))
+
+
+for dt in dt_list:
+    t = np.arange(0,5+dt,dt)
+    y_true = y0*np.exp(3.0*(np.cos(t)-1.0)) 
+    y = np.empty_like(y_true)
+    y[0] = np.pi/np.sqrt(2)
+    for j in range(len(t)-1):
+        y[j+1] = y[j] +dt/2* (-3.0*y[j]*np.sin(t[j])+(-3.0*(y[j]+dt*-3.0*y[j]*np.sin(t[j]))*np.sin(t[j]+dt)))
+    E = np.mean(np.abs(y_true - y))
+    Err_heun.append(E)
+
+    
+    if np.isclose(dt, dt_list[-1]):
+        A4 = y.reshape(y.size, 1)   
+
+# errors row vector and slope of log-log fit
+A5 = np.array(Err_heun, dtype=float).reshape(-1, 1)
+A6 = float(np.polyfit(np.log(dt_list), np.log(Err_heun), 1)[0])
+
+
+##Problem 2a
+def vdp(t, z, e):
+    y, v = z
+    return [v, -e * (y*y - 1.0) * v - y]
+
+t_eval = np.arange(0.0, 32.5, 0.5)   
+y0, v0 = np.sqrt(3.0), 1.0
+
+e_list = [0.1, 1.0, 20.0]
+cols = []
+
+for e in e_list:
+    sol = solve_ivp(
+        lambda t, z: vdp(t, z, e),
+        t_span=(t_eval[0], t_eval[-1]),
+        y0=[y0, v0],
+        t_eval=t_eval,
+        method="LSODA",         
+        rtol=1e-8,
+        atol=1e-11
+    )
+    
+    cols.append(sol.y[0])       
+
+A7 = np.column_stack(cols)  
+
+##Problem 2b
+def vdp(t, z, e):
+    y, v = z
+    return [v, -e * (y*y - 1.0) * v - y]  
+
+t_span = (0.0, 32.0)
+y_0, v_0 = 2.0, np.pi*np.pi
+tols = np.array([1e-4, 1e-5, 1e-6, 1e-7, 1e-8, 1e-9, 1e-10])
+e = 1.0
+
+average_dt = []
+for tol in tols:
+    sol = solve_ivp(lambda t, z: vdp(t, z, e),
+                    t_span=t_span,
+                    y0=[y_0, v_0],
+                    rtol=tol, atol=tol)   
+    T = sol.t
+    average_dt.append(np.mean(np.diff(T)))
+
+average_dt = np.array(average_dt)
+
+x = np.log10(average_dt)
+y = np.log10(tols)
+A8, intercept = np.polyfit(x, y, 1)
+
+#--------------------------------------
+def vdp(t, z, e):
+    y, v = z
+    return [v, -e * (y*y - 1.0) * v - y]   
+
+t_span = (0.0, 32.0)
+y_0, v_0 = 2.0, np.pi*np.pi
+tols = np.array([1e-4, 1e-5, 1e-6, 1e-7, 1e-8, 1e-9, 1e-10])
+e = 1.0
+
+average_dt = []
+for tol in tols:
+    sol = solve_ivp(lambda t, z: vdp(t, z, e),
+                    t_span=t_span,
+                    y0=[y_0, v_0],method = "RK23",
+                    rtol=tol, atol=tol)   
+    T = sol.t
+    average_dt.append(np.mean(np.diff(T)))
+
+average_dt = np.array(average_dt)
+
+
+x = np.log10(average_dt)
+y = np.log10(tols)
+A9, intercept = np.polyfit(x, y, 1)
+#--------------------------------------------
+def vdp(t, z, e):
+    y, v = z
+    return [v, -e * (y*y - 1.0) * v - y]   
+
+t_span = (0.0, 32.0)
+y_0, v_0 = 2.0, np.pi*np.pi
+tols = np.array([1e-4, 1e-5, 1e-6, 1e-7, 1e-8, 1e-9, 1e-10])
+e = 1.0
+
+average_dt = []
+for tol in tols:
+    sol = solve_ivp(lambda t, z: vdp(t, z, e),
+                    t_span=t_span,
+                    y0=[y_0, v_0],method = "LSODA",
+                    rtol=tol, atol=tol)   
+    T = sol.t
+    average_dt.append(np.mean(np.diff(T)))
+
+average_dt = np.array(average_dt)
+
+
+x = np.log10(average_dt)
+y = np.log10(tols)
+A10, intercept = np.polyfit(x, y, 1)
+
+##Problem 3
+
+a1, a2 = 0.05, 0.25
+b = c = 0.01
+I = 0.1
+
+def fhn_coupled(t, z, d12, d21):
+    v1, v2, w1, w2 = z
+    dv1 = -v1**3 + (1 + a1)*v1**2 - a1*v1 - w1 + I + d12*v2
+    dw1 = b*v1 - c*w1
+    dv2 = -v2**3 + (1 + a2)*v2**2 - a2*v2 - w2 + I + d21*v1
+    dw2 = b*v2 - c*w2
+    return [dv1, dv2, dw1, dw2]
+
+
+t_eval = np.arange(0.0, 100.5, 0.5)  
+t_span = (t_eval[0], t_eval[-1])
+z0 = [0.1, 0.1, 0.0, 0.0]
+
+
+pairs = [
+    (0.0, 0.0),
+    (0.0, 0.2),
+    (-0.1, 0.2),
+    (-0.3, 0.2),
+    (-0.5, 0.2),
+]
+
+solutions = []
+for d12, d21 in pairs:
+    sol = solve_ivp(
+        lambda t, z: fhn_coupled(t, z, d12, d21),
+        t_span=t_span,
+        y0=z0,
+        t_eval=t_eval,
+        method="BDF",        
+        rtol=1e-6, atol=1e-8
+    )
+   
+    solutions.append(sol.y.T)
+
+A11, A12, A13, A14, A15 = solutions
+
